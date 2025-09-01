@@ -406,7 +406,7 @@ elif selected == "Admin Dashboard":
                     df = df[df['User'] != remove_user]
                     save_data()
                     st.success(f"User {remove_user} and all associated data deleted.")
-                st.experimental_rerun()  # Refresh to update dropdowns
+                st.rerun()  # Refresh to update dropdowns
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Download Excel
