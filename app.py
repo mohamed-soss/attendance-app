@@ -13,14 +13,17 @@ DATA_FILE = 'attendance_data.csv'
 # Define expected columns
 EXPECTED_COLUMNS = ['User', 'Date', 'CheckIn', 'CheckOut', 
                     'Break1Start', 'Break1End', 'Break2Start', 'Break2End', 
-                    'Break3Start', 'Break3End', 'TotalHours', 'BreakDuration']
+                    'Break3Start', 'Break3End', 'TotalHours', 'BreakDuration', 'Active']
 
 # Load data and ensure all columns exist
 if os.path.exists(DATA_FILE):
     df = pd.read_csv(DATA_FILE)
     for col in EXPECTED_COLUMNS:
         if col not in df.columns:
-            df[col] = pd.NA
+            if col == 'Active':
+                df[col] = True  # Default all existing users to active
+            else:
+                df[col] = pd.NA
 else:
     df = pd.DataFrame(columns=EXPECTED_COLUMNS)
 
@@ -178,8 +181,8 @@ st.markdown("""
         height: 200px;
     }
 
-    /* Inputs */
-    .stTextInput > div > div > input {
+    /* Inputs and Selectbox */
+    .stTextInput > div > div > input, .stSelectbox > div > select {
         background: rgba(255, 255, 255, 0.05);
         color: #ffffff;
         border: 1px solid #00ffea;
@@ -189,7 +192,7 @@ st.markdown("""
         box-shadow: 0 0 5px rgba(0, 255, 234, 0.3);
         transition: all 0.3s ease;
     }
-    .stTextInput > div > div > input:focus {
+    .stTextInput > div > div > input:focus, .stSelectbox > div > select:focus {
         border-color: #ff00ff;
         box-shadow: 0 0 10px #ff00ff;
     }
@@ -207,7 +210,7 @@ st.markdown("""
         from { transform: translateX(-30px); opacity: 0; }
         to { transform: translateX(0); opacity: 1; }
     }
-    .stMarkdown, .stButton, .stTextInput {
+    .stMarkdown, .stButton, .stTextInput, .stSelectbox {
         animation: slideIn 0.7s ease-out;
     }
 
@@ -239,85 +242,89 @@ with st.sidebar:
     )
 
 if selected == "User Portal":
-    st.title("Attendance")
+    st.title("Quantum Attendance")
     with st.container():
         st.markdown('<div class="card">', unsafe_allow_html=True)
         user_name = st.text_input("Enter your name", placeholder="Your Identity Code...")
         st.markdown('</div>', unsafe_allow_html=True)
 
     if user_name:
-        shift_date = get_shift_date()
-        # Get all records for the user on the current shift date
-        user_rows = df[(df['User'] == user_name) & (df['Date'] == str(shift_date))]
-
-        # Create a new record for each check-in
-        if st.button("Start New Session", key="start_session"):
-            new_row = {'User': user_name, 'Date': str(shift_date)}
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            save_data()
-            st.success("New Session Initialized")
+        # Check if user is active
+        user_records = df[df['User'] == user_name]
+        user_active = user_records['Active'].any() if not user_records.empty else True
+        if not user_active:
+            st.error("Access Denied: User account has been deleted.")
+        else:
+            shift_date = get_shift_date()
             user_rows = df[(df['User'] == user_name) & (df['Date'] == str(shift_date))]
-        
-        # Use the most recent record for actions
-        if not user_rows.empty:
-            row_index = user_rows.index[-1]  # Most recent record
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            col1, col2 = st.columns(2, gap="medium")
 
-            with col1:
-                if st.button("Check In", key=f"check_in_{row_index}") and pd.isna(df.at[row_index, 'CheckIn']):
-                    df.at[row_index, 'CheckIn'] = format_time(datetime.now())
-                    save_data()
-                    st.success("Initiated Shift Sequence")
+            # Create a new record for each check-in
+            if st.button("Start New Session", key="start_session"):
+                new_row = {'User': user_name, 'Date': str(shift_date), 'Active': True}
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                save_data()
+                st.success("New Session Initialized")
+                user_rows = df[(df['User'] == user_name) & (df['Date'] == str(shift_date))]
 
-                for i in range(1, 4):
-                    if st.button(f"Break {i} Start", key=f"break_{i}_start_{row_index}") and pd.isna(df.at[row_index, f'Break{i}Start']) and pd.notna(df.at[row_index, 'CheckIn']):
-                        if i == 1 or (pd.notna(df.at[row_index, f'Break{i-1}End'])):
-                            df.at[row_index, f'Break{i}Start'] = format_time(datetime.now())
+            if not user_rows.empty:
+                row_index = user_rows.index[-1]  # Most recent record
+                st.markdown('<div class="card">', unsafe_allow_html=True)
+                col1, col2 = st.columns(2, gap="medium")
+
+                with col1:
+                    if st.button("Check In", key=f"check_in_{row_index}") and pd.isna(df.at[row_index, 'CheckIn']):
+                        df.at[row_index, 'CheckIn'] = format_time(datetime.now())
+                        save_data()
+                        st.success("Initiated Shift Sequence")
+
+                    for i in range(1, 4):
+                        if st.button(f"Break {i} Start", key=f"break_{i}_start_{row_index}") and pd.isna(df.at[row_index, f'Break{i}Start']) and pd.notna(df.at[row_index, 'CheckIn']):
+                            if i == 1 or (pd.notna(df.at[row_index, f'Break{i-1}End'])):
+                                df.at[row_index, f'Break{i}Start'] = format_time(datetime.now())
+                                save_data()
+                                st.success(f"Break {i} Sequence Started")
+
+                with col2:
+                    for i in range(1, 4):
+                        if st.button(f"Break {i} End", key=f"break_{i}_end_{row_index}") and pd.notna(df.at[row_index, f'Break{i}Start']) and pd.isna(df.at[row_index, f'Break{i}End']):
+                            df.at[row_index, f'Break{i}End'] = format_time(datetime.now())
                             save_data()
-                            st.success(f"Break {i} Sequence Started")
+                            st.success(f"Break {i} Sequence Ended")
 
-            with col2:
-                for i in range(1, 4):
-                    if st.button(f"Break {i} End", key=f"break_{i}_end_{row_index}") and pd.notna(df.at[row_index, f'Break{i}Start']) and pd.isna(df.at[row_index, f'Break{i}End']):
-                        df.at[row_index, f'Break{i}End'] = format_time(datetime.now())
-                        save_data()
-                        st.success(f"Break {i} Sequence Ended")
-
-                if st.button("Check Out", key=f"check_out_{row_index}") and pd.notna(df.at[row_index, 'CheckIn']) and pd.isna(df.at[row_index, 'CheckOut']):
-                    if all(pd.notna(df.at[row_index, f'Break{i}End']) for i in range(1, 4) if pd.notna(df.at[row_index, f'Break{i}Start'])):
-                        df.at[row_index, 'CheckOut'] = format_time(datetime.now())
-                        total_hours, break_duration = calculate_times(df.loc[row_index], shift_date)
-                        df.at[row_index, 'TotalHours'] = total_hours
-                        df.at[row_index, 'BreakDuration'] = break_duration
-                        save_data()
-                        st.success("Shift Sequence Terminated")
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            # Display current session status
-            st.markdown('<div class="card"><h3>Current Session Status</h3>', unsafe_allow_html=True)
-            status_html = f"""
-            <div style="padding:15px; border: 1px solid #00ffea; border-radius: 10px; box-shadow: 0 0 15px #00ffea;">
-                <p><strong>Check In:</strong> <span style="color: #00ffea;">{df.at[row_index, 'CheckIn'] if pd.notna(df.at[row_index, 'CheckIn']) else 'Awaiting'}</span></p>
-                <p><strong>Break 1 Start:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break1Start'] if 'Break1Start' in df.columns and pd.notna(df.at[row_index, 'Break1Start']) else 'Awaiting'}</span></p>
-                <p><strong>Break 1 End:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break1End'] if 'Break1End' in df.columns and pd.notna(df.at[row_index, 'Break1End']) else 'Awaiting'}</span></p>
-                <p><strong>Break 2 Start:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break2Start'] if 'Break2Start' in df.columns and pd.notna(df.at[row_index, 'Break2Start']) else 'Awaiting'}</span></p>
-                <p><strong>Break 2 End:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break2End'] if 'Break2End' in df.columns and pd.notna(df.at[row_index, 'Break2End']) else 'Awaiting'}</span></p>
-                <p><strong>Break 3 Start:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break3Start'] if 'Break3Start' in df.columns and pd.notna(df.at[row_index, 'Break3Start']) else 'Awaiting'}</span></p>
-                <p><strong>Break 3 End:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break3End'] if 'Break3End' in df.columns and pd.notna(df.at[row_index, 'Break3End']) else 'Awaiting'}</span></p>
-                <p><strong>Check Out:</strong> <span style="color: #00ffea;">{df.at[row_index, 'CheckOut'] if pd.notna(df.at[row_index, 'CheckOut']) else 'Awaiting'}</span></p>
-            </div>
-            """
-            components.html(status_html, height=320)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            # Display all sessions for the current shift date
-            if len(user_rows) > 0:
-                st.markdown('<div class="card"><h3>All Sessions Today</h3>', unsafe_allow_html=True)
-                display_df = user_rows[['CheckIn', 'CheckOut', 'Break1Start', 'Break1End', 'Break2Start', 'Break2End', 'Break3Start', 'Break3End', 'TotalHours', 'BreakDuration']].copy()
-                display_df.fillna('Awaiting', inplace=True)
-                st.dataframe(display_df.style.background_gradient(cmap='magma'), use_container_width=True)
+                    if st.button("Check Out", key=f"check_out_{row_index}") and pd.notna(df.at[row_index, 'CheckIn']) and pd.isna(df.at[row_index, 'CheckOut']):
+                        if all(pd.notna(df.at[row_index, f'Break{i}End']) for i in range(1, 4) if pd.notna(df.at[row_index, f'Break{i}Start'])):
+                            df.at[row_index, 'CheckOut'] = format_time(datetime.now())
+                            total_hours, break_duration = calculate_times(df.loc[row_index], shift_date)
+                            df.at[row_index, 'TotalHours'] = total_hours
+                            df.at[row_index, 'BreakDuration'] = break_duration
+                            save_data()
+                            st.success("Shift Sequence Terminated")
                 st.markdown('</div>', unsafe_allow_html=True)
+
+                # Display current session status
+                st.markdown('<div class="card"><h3>Current Session Status</h3>', unsafe_allow_html=True)
+                status_html = f"""
+                <div style="padding:15px; border: 1px solid #00ffea; border-radius: 10px; box-shadow: 0 0 15px #00ffea;">
+                    <p><strong>Check In:</strong> <span style="color: #00ffea;">{df.at[row_index, 'CheckIn'] if pd.notna(df.at[row_index, 'CheckIn']) else 'Awaiting'}</span></p>
+                    <p><strong>Break 1 Start:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break1Start'] if 'Break1Start' in df.columns and pd.notna(df.at[row_index, 'Break1Start']) else 'Awaiting'}</span></p>
+                    <p><strong>Break 1 End:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break1End'] if 'Break1End' in df.columns and pd.notna(df.at[row_index, 'Break1End']) else 'Awaiting'}</span></p>
+                    <p><strong>Break 2 Start:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break2Start'] if 'Break2Start' in df.columns and pd.notna(df.at[row_index, 'Break2Start']) else 'Awaiting'}</span></p>
+                    <p><strong>Break 2 End:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break2End'] if 'Break2End' in df.columns and pd.notna(df.at[row_index, 'Break2End']) else 'Awaiting'}</span></p>
+                    <p><strong>Break 3 Start:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break3Start'] if 'Break3Start' in df.columns and pd.notna(df.at[row_index, 'Break3Start']) else 'Awaiting'}</span></p>
+                    <p><strong>Break 3 End:</strong> <span style="color: #00ffea;">{df.at[row_index, 'Break3End'] if 'Break3End' in df.columns and pd.notna(df.at[row_index, 'Break3End']) else 'Awaiting'}</span></p>
+                    <p><strong>Check Out:</strong> <span style="color: #00ffea;">{df.at[row_index, 'CheckOut'] if pd.notna(df.at[row_index, 'CheckOut']) else 'Awaiting'}</span></p>
+                </div>
+                """
+                components.html(status_html, height=320)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # Display all sessions for the current shift date
+                if len(user_rows) > 0:
+                    st.markdown('<div class="card"><h3>All Sessions Today</h3>', unsafe_allow_html=True)
+                    display_df = user_rows[['CheckIn', 'CheckOut', 'Break1Start', 'Break1End', 'Break2Start', 'Break2End', 'Break3Start', 'Break3End', 'TotalHours', 'BreakDuration']].copy()
+                    display_df.fillna('Awaiting', inplace=True)
+                    st.dataframe(display_df, use_container_width=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
 elif selected == "Admin Dashboard":
     st.title("Command Center")
@@ -348,7 +355,7 @@ elif selected == "Admin Dashboard":
         if filter_date != 'All':
             filtered_df = filtered_df[filtered_df['Date'] == filter_date]
         
-        st.dataframe(filtered_df.style.background_gradient(cmap='magma'), use_container_width=True)
+        st.dataframe(filtered_df, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Interactive chart
@@ -365,11 +372,41 @@ elif selected == "Admin Dashboard":
             st.plotly_chart(fig, use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
         
-        # Add new user
+        # User management: Add new user
         st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("User Management")
         new_user = st.text_input("Add new user (optional)", placeholder="New User Identity...")
         if st.button("Add User") and new_user:
-            st.success(f"User {new_user} Authorized")
+            user_records = df[df['User'] == new_user]
+            if user_records.empty or not user_records['Active'].any():
+                new_row = {'User': new_user, 'Date': str(get_shift_date()), 'Active': True}
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                save_data()
+                st.success(f"User {new_user} Authorized")
+            else:
+                st.warning(f"User {new_user} already exists and is active.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # User management: Remove user
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("Remove User")
+        remove_user = st.selectbox("Select User to Remove", options=['None'] + sorted(df['User'].unique().tolist()), key='remove_user')
+        action = st.selectbox("Action", options=["Keep User", "Delete User (Keep Data)", "Delete User and Data"], key='user_action')
+        
+        if st.button("Execute Action") and remove_user != 'None':
+            user_records = df[df['User'] == remove_user]
+            if user_records.empty:
+                st.error(f"User {remove_user} not found.")
+            else:
+                if action == "Delete User (Keep Data)":
+                    df.loc[df['User'] == remove_user, 'Active'] = False
+                    save_data()
+                    st.success(f"User {remove_user} deleted. Historical data retained.")
+                elif action == "Delete User and Data":
+                    df = df[df['User'] != remove_user]
+                    save_data()
+                    st.success(f"User {remove_user} and all associated data deleted.")
+                st.experimental_rerun()  # Refresh to update dropdowns
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Download Excel
