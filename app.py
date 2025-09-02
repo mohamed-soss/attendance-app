@@ -239,7 +239,7 @@ with st.sidebar:
     )
 
 if selected == "User Portal":
-    st.title("Quantum Attendance")
+    st.title("Hunter Attendance")
     with st.container():
         st.markdown('<div class="card">', unsafe_allow_html=True)
         user_name = st.text_input("Enter your name", placeholder="Your Identity Code...")
