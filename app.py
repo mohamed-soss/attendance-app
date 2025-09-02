@@ -205,7 +205,7 @@ st.markdown("""
     }
 
     @keyframes slideIn {
-        from { transform: translateX(-30px); opacity: 0; }
+        from { transform: translateX(-30px); FBS opacity: 0; }
         to { transform: translateX(0); opacity: 1; }
     }
     .stMarkdown, .stButton, .stTextInput, .stSelectbox {
@@ -219,8 +219,30 @@ st.markdown("""
         color: #ffffff;
         box-shadow: 0 0 10px rgba(0, 255, 234, 0.3);
     }
+
+    /* Style for form submit button */
+    .stFormSubmitButton > button {
+        background: linear-gradient(45deg, #00ffea, #ff00ff);
+        color: #ffffff;
+        border: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        font-weight: 700;
+        border-radius: 10px;
+        box-shadow: 0 0 10px #00ffea;
+        margin-top: 10px;
+        transition: all 0.3s ease;
+    }
+    .stFormSubmitButton > button:hover {
+        transform: scale(1.05);
+        box-shadow: 0 0 15px #ff00ff;
+    }
     </style>
 """, unsafe_allow_html=True)
+
+# Initialize session state for user selection
+if 'selected_user' not in st.session_state:
+    st.session_state.selected_user = None
 
 # Sidebar for navigation
 with st.sidebar:
@@ -239,18 +261,35 @@ with st.sidebar:
     )
 
 if selected == "User Portal":
-    st.title("Hunter Attendance")
+    st.title("Quantum Attendance")
     with st.container():
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        user_name = st.text_input("Enter your name", placeholder="Your Identity Code...")
+        # Get list of active users
+        active_users = sorted(df[df['Active'] == True]['User'].unique().tolist())
+        
+        with st.form(key="user_selection_form"):
+            if not active_users:
+                st.warning("No active users available. Please contact the admin to add users.")
+                user_name = None
+            else:
+                user_name = st.selectbox("Select your identity", options=active_users, placeholder="Choose User...", key="user_select")
+                submitted = st.form_submit_button("Enter")  # Visible button labeled "Enter"
+                if submitted:
+                    if user_name:
+                        st.session_state.selected_user = user_name
+                    else:
+                        st.error("Please select a user before submitting.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    if user_name:
+    # Use session state to display user session
+    if st.session_state.selected_user:
+        user_name = st.session_state.selected_user
         # Check if user is active
         user_records = df[df['User'] == user_name]
         user_active = user_records['Active'].any() if not user_records.empty else True
         if not user_active:
             st.error("Access Denied: User account has been deleted.")
+            st.session_state.selected_user = None  # Reset selection
         else:
             shift_date = get_shift_date()
             user_rows = df[(df['User'] == user_name) & (df['Date'] == str(shift_date))]
@@ -380,6 +419,7 @@ elif selected == "Admin Dashboard":
                 df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                 save_data()
                 st.success(f"User {new_user} Authorized")
+                st.rerun()  # Refresh to update dropdowns
             else:
                 st.warning(f"User {new_user} already exists and is active.")
         st.markdown('</div>', unsafe_allow_html=True)
