@@ -1,11 +1,15 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import os
 import base64
 import plotly.express as px
 from streamlit_option_menu import option_menu
 import streamlit.components.v1 as components
+
+# Egypt timezone
+EGYPT_TZ = ZoneInfo("Africa/Cairo")
 
 # File to store data
 DATA_FILE = 'attendance_data.csv'
@@ -33,7 +37,7 @@ def save_data():
 
 # Function to calculate shift date (shift starts at 4 PM, ends at 12 AM next day, but date is the start day)
 def get_shift_date():
-    now = datetime.now()
+    now = datetime.now(EGYPT_TZ)
     if now.hour < 4 or (now.hour == 4 and now.minute == 0):
         return (now - timedelta(days=1)).date()
     else:
@@ -48,6 +52,7 @@ def parse_time(time_str, shift_date):
     if pd.isna(time_str):
         return None
     dt = datetime.strptime(f"{shift_date} {time_str}", "%Y-%m-%d %I:%M %p")
+    dt = dt.replace(tzinfo=EGYPT_TZ)
     if dt.hour < 16 and time_str.endswith("AM"):
         dt += timedelta(days=1)
     return dt
@@ -91,7 +96,6 @@ st.markdown("""
         100% { background-position: 0% 50%; }
     }
 
-    /* Sidebar */
     .css-1lcbmhc {
         background: rgba(255, 255, 255, 0.05);
         backdrop-filter: blur(12px);
@@ -116,7 +120,6 @@ st.markdown("""
         box-shadow: 0 0 10px #00ffea;
     }
 
-    /* Headers */
     h1, h2, h3 {
         color: #00ffea;
         font-weight: 700;
@@ -129,7 +132,6 @@ st.markdown("""
         to { text-shadow: 0 0 10px #00ffea, 0 0 20px #ff00ff; }
     }
 
-    /* Cards */
     .card {
         background: rgba(255, 255, 255, 0.05);
         backdrop-filter: blur(10px);
@@ -146,7 +148,6 @@ st.markdown("""
         box-shadow: 0 0 20px rgba(0, 255, 234, 0.5);
     }
 
-    /* Buttons */
     .stButton > button {
         background: linear-gradient(45deg, #00ffea, #ff00ff);
         color: #ffffff;
@@ -181,7 +182,6 @@ st.markdown("""
         height: 200px;
     }
 
-    /* Inputs and Selectbox */
     .stTextInput > div > div > input, .stSelectbox > div > select {
         background: rgba(255, 255, 255, 0.05);
         color: #ffffff;
@@ -197,7 +197,6 @@ st.markdown("""
         box-shadow: 0 0 10px #ff00ff;
     }
 
-    /* Dataframe */
     .dataframe {
         background: rgba(255, 255, 255, 0.05);
         color: #ffffff;
@@ -205,7 +204,6 @@ st.markdown("""
         border: 1px solid rgba(0, 255, 234, 0.3);
     }
 
-    /* Animations */
     @keyframes slideIn {
         from { transform: translateX(-30px); opacity: 0; }
         to { transform: translateX(0); opacity: 1; }
@@ -214,7 +212,6 @@ st.markdown("""
         animation: slideIn 0.7s ease-out;
     }
 
-    /* Success/Error Messages */
     .stAlert {
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid #00ffea;
@@ -273,27 +270,27 @@ if selected == "User Portal":
 
                 with col1:
                     if st.button("Check In", key=f"check_in_{row_index}") and pd.isna(df.at[row_index, 'CheckIn']):
-                        df.at[row_index, 'CheckIn'] = format_time(datetime.now())
+                        df.at[row_index, 'CheckIn'] = format_time(datetime.now(EGYPT_TZ))
                         save_data()
                         st.success("Initiated Shift Sequence")
 
                     for i in range(1, 4):
                         if st.button(f"Break {i} Start", key=f"break_{i}_start_{row_index}") and pd.isna(df.at[row_index, f'Break{i}Start']) and pd.notna(df.at[row_index, 'CheckIn']):
                             if i == 1 or (pd.notna(df.at[row_index, f'Break{i-1}End'])):
-                                df.at[row_index, f'Break{i}Start'] = format_time(datetime.now())
+                                df.at[row_index, f'Break{i}Start'] = format_time(datetime.now(EGYPT_TZ))
                                 save_data()
                                 st.success(f"Break {i} Sequence Started")
 
                 with col2:
                     for i in range(1, 4):
                         if st.button(f"Break {i} End", key=f"break_{i}_end_{row_index}") and pd.notna(df.at[row_index, f'Break{i}Start']) and pd.isna(df.at[row_index, f'Break{i}End']):
-                            df.at[row_index, f'Break{i}End'] = format_time(datetime.now())
+                            df.at[row_index, f'Break{i}End'] = format_time(datetime.now(EGYPT_TZ))
                             save_data()
                             st.success(f"Break {i} Sequence Ended")
 
                     if st.button("Check Out", key=f"check_out_{row_index}") and pd.notna(df.at[row_index, 'CheckIn']) and pd.isna(df.at[row_index, 'CheckOut']):
                         if all(pd.notna(df.at[row_index, f'Break{i}End']) for i in range(1, 4) if pd.notna(df.at[row_index, f'Break{i}Start'])):
-                            df.at[row_index, 'CheckOut'] = format_time(datetime.now())
+                            df.at[row_index, 'CheckOut'] = format_time(datetime.now(EGYPT_TZ))
                             total_hours, break_duration = calculate_times(df.loc[row_index], shift_date)
                             df.at[row_index, 'TotalHours'] = total_hours
                             df.at[row_index, 'BreakDuration'] = break_duration
