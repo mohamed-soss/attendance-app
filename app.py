@@ -317,7 +317,7 @@ with st.sidebar:
     )
 
 if selected == "User Portal":
-    st.title("Quantum Attendance")
+    st.title("Hunter Attendance")
     with st.container():
         st.markdown('<div class="card">', unsafe_allow_html=True)
         # Get list of active users
